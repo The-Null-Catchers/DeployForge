@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/.env
+.env
+.tmp
+.git
+apps/mobile
+apps/web/test-results
+apps/web/playwright-report
+services/runner/bin
+backups
+docs/screenshots

@@ -112,6 +112,7 @@ func run(logger *slog.Logger) error {
 		defer cancel()
 		_ = hs.Shutdown(c)
 	}()
+	_ = os.WriteFile("/tmp/deployforge-runner.addr", []byte(addr), 0o644)
 	logger.Info("runner listening", "addr", addr, "maxConcurrentBuilds", maxBuilds, "gitHosts", git.AllowedHosts)
 	if err := hs.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return err

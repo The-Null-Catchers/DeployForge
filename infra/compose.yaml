@@ -118,6 +118,7 @@ services:
     image: deployforge/runner:${DEPLOYFORGE_VERSION:-local}
     build:
       context: ../services/runner
+      secrets: [build_ca]
     restart: unless-stopped
     security_opt: ["no-new-privileges:true"]
     logging:
@@ -146,9 +147,7 @@ services:
 
   migrate:
     image: deployforge/api:${DEPLOYFORGE_VERSION:-local}
-    build:
-      context: ..
-      dockerfile: infra/Dockerfile.api
+    pull_policy: never
     command: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
     environment:
       DATABASE_URL: postgresql://deployforge:${POSTGRES_PASSWORD}@postgres:5432/deployforge
@@ -159,6 +158,10 @@ services:
 
   api:
     image: deployforge/api:${DEPLOYFORGE_VERSION:-local}
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+      secrets: [build_ca]
     <<: *hardening
     environment:
       <<: *control-env
@@ -179,6 +182,7 @@ services:
 
   worker:
     image: deployforge/api:${DEPLOYFORGE_VERSION:-local}
+    pull_policy: never
     <<: *hardening
     environment:
       <<: *control-env
@@ -202,6 +206,11 @@ services:
 networks:
   control:
     name: deployforge-control
+
+secrets:
+  # Optional extra CA bundle for builds behind a TLS-intercepting proxy.
+  build_ca:
+    file: ${DEPLOYFORGE_BUILD_CA:-/dev/null}
 
 volumes:
   pgdata:
