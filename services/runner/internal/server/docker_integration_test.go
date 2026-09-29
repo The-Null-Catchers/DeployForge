@@ -71,8 +71,8 @@ func newHarness(t *testing.T) *harness {
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	pol := gitops.Policy{InsecureHTTPHosts: []string{u.Host}}
-	bm := build.NewManager(build.Config{WorkDir: t.TempDir(), DockerHost: "unix:///var/run/docker.sock", MaxConcurrent: 2, Git: pol, Logger: logger}, d)
-	s := New(Config{Secret: []byte(secret), Git: pol, Logger: logger}, d, bm)
+	bm := build.NewManager(build.Config{Instance: "it", WorkDir: t.TempDir(), DockerHost: "unix:///var/run/docker.sock", MaxConcurrent: 2, Git: pol, Logger: logger}, d)
+	s := New(Config{Secret: []byte(secret), Instance: "it", Git: pol, Logger: logger}, d, bm)
 	srv := httptest.NewServer(s.Handler())
 	t.Cleanup(srv.Close)
 	return &harness{t: t, srv: srv, docker: d, shas: shas, repo: gitSrv.URL + "/demo/sample-app.git"}
@@ -373,6 +373,33 @@ func TestOwnershipEnforced(t *testing.T) {
 	}, &e)
 	if code != 403 {
 		t.Errorf("expected 403 launching a non-DeployForge image, got %d (%+v)", code, e)
+	}
+}
+
+func TestOtherInstanceIsNotOwned(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	out, err := exec.Command("docker", "run", "-d", "--rm",
+		"--label", "io.deployforge.managed=true", "--label", "io.deployforge.role=app", "--label", "io.deployforge.instance=someone-else",
+		"alpine:3.20", "sleep", "60").CombinedOutput()
+	if err != nil {
+		t.Skipf("cannot start container: %s", out)
+	}
+	other := strings.TrimSpace(string(out))
+	defer h.docker.RemoveContainer(ctx, other)
+	if code := h.call("GET", "/v1/containers/"+other, nil, nil); code != 404 {
+		t.Errorf("another installation's container is visible: %d", code)
+	}
+	var list []protocol.ContainerSummary
+	h.call("GET", "/v1/containers", nil, &list)
+	for _, c := range list {
+		if c.ID == other {
+			t.Error("another installation's container is listed")
+		}
+	}
+	h.call("DELETE", "/v1/containers/"+other, nil, nil)
+	if _, err := h.docker.InspectContainer(ctx, other); err != nil {
+		t.Fatal("another installation's container was removed")
 	}
 }
 

@@ -1,0 +1,38 @@
+# Acceptance-test overlay (TEST INFRASTRUCTURE ONLY).
+#
+# Adds a hermetic git server with the sample application's release commits
+# and allows the runner/API to clone from it over plain HTTP. Used by
+# scripts/acceptance.sh; never use this overlay for a real installation.
+services:
+  git-fixture:
+    image: deployforge/gitfixture:local
+    build:
+      context: ../services/runner
+      target: gitfixture
+      secrets: [build_ca]
+    command: ["-root", "/repos", "-addr", ":8080"]
+    volumes:
+      - ${ACCEPTANCE_FIXTURE_DIR:?set ACCEPTANCE_FIXTURE_DIR}:/repos:ro
+    networks:
+      control:
+        aliases: [git-fixture]
+    restart: unless-stopped
+
+  runner:
+    environment:
+      RUNNER_GIT_INSECURE_HTTP_HOSTS: git-fixture:8080
+
+  api:
+    environment:
+      GIT_EXTRA_ALLOWED_HOSTS: git-fixture:8080
+      DEPLOYFORGE_ALLOW_TEST_GIT_HOSTS: "true"
+      API_DOCS_ENABLED: "true"
+
+  worker:
+    environment:
+      GIT_EXTRA_ALLOWED_HOSTS: git-fixture:8080
+      DEPLOYFORGE_ALLOW_TEST_GIT_HOSTS: "true"
+
+  caddy:
+    ports: !override
+      - "127.0.0.1:${HTTP_PORT:-18080}:80"

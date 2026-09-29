@@ -43,6 +43,8 @@ x-control-env: &control-env
   DRAIN_SECONDS: ${DRAIN_SECONDS:-15}
   RELEASES_TO_RETAIN: ${RELEASES_TO_RETAIN:-5}
   LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-14}
+  LEASE_SECONDS: ${LEASE_SECONDS:-90}
+  RECONCILE_INTERVAL_SECONDS: ${RECONCILE_INTERVAL_SECONDS:-60}
   GITHUB_MODE: ${GITHUB_MODE:-disabled}
   GITHUB_APP_ID: ${GITHUB_APP_ID:-}
   GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
@@ -63,7 +65,8 @@ services:
   postgres:
     image: postgres:17.11-alpine
     <<: *hardening
-    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    # Run as the image's postgres user: no capabilities are needed at all.
+    user: "70:70"
     environment:
       POSTGRES_USER: deployforge
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -79,7 +82,7 @@ services:
   redis:
     image: redis:7.4.8-alpine
     <<: *hardening
-    cap_add: [CHOWN, SETGID, SETUID]
+    user: "999:1000"
     command: ["redis-server", "--appendonly", "yes", "--save", "60", "1", "--maxmemory-policy", "noeviction"]
     volumes: [redisdata:/data]
     networks: [control]
@@ -96,6 +99,7 @@ services:
     command: ["caddy", "run", "--resume", "--config", "/etc/caddy/bootstrap.json"]
     labels:
       io.deployforge.role: proxy
+      io.deployforge.instance: ${DEPLOYFORGE_INSTANCE_ID:-default}
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
@@ -126,7 +130,8 @@ services:
       options: { max-size: "20m", max-file: "5" }
     environment:
       RUNNER_SHARED_SECRET: ${RUNNER_SHARED_SECRET}
-      RUNNER_LISTEN_NETWORK: deployforge-control
+      RUNNER_LISTEN_NETWORK: ${DEPLOYFORGE_CONTROL_NETWORK:-deployforge-control}
+      DEPLOYFORGE_INSTANCE_ID: ${DEPLOYFORGE_INSTANCE_ID:-default}
       RUNNER_ATTACH_SELF: "true"
       RUNNER_MAX_CONCURRENT_BUILDS: ${RUNNER_MAX_CONCURRENT_BUILDS:-2}
       RUNNER_GIT_ALLOWED_HOSTS: github.com
@@ -205,7 +210,7 @@ services:
 
 networks:
   control:
-    name: deployforge-control
+    name: ${DEPLOYFORGE_CONTROL_NETWORK:-deployforge-control}
 
 secrets:
   # Optional extra CA bundle for builds behind a TLS-intercepting proxy.

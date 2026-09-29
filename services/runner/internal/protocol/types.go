@@ -15,13 +15,16 @@ const (
 )
 
 // Ownership labels. The runner only mutates or deletes Docker objects that
-// carry LabelManaged=true.
+// carry LabelManaged=true AND LabelInstance equal to its own instance ID, so
+// several installations (for example a dev and a test stack) can share one
+// Docker daemon without touching each other's resources.
 const (
 	LabelManaged     = "io.deployforge.managed"
 	LabelWorkspace   = "io.deployforge.workspace"
 	LabelApplication = "io.deployforge.application"
 	LabelDeployment  = "io.deployforge.deployment"
 	LabelRole        = "io.deployforge.role"
+	LabelInstance    = "io.deployforge.instance"
 )
 
 type Error struct {

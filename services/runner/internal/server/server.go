@@ -39,6 +39,8 @@ var (
 
 type Config struct {
 	Secret []byte
+	// Instance scopes ownership labels to this installation.
+	Instance string
 	// SelfContainer is this runner's container ID/hostname when it runs in
 	// Docker; it is attached to application networks for health probes.
 	SelfContainer string
@@ -59,6 +61,15 @@ func New(cfg Config, d *docker.Client, b *build.Manager) *Server {
 }
 
 func NetworkName(applicationID string) string { return "df-app-" + applicationID }
+
+// ours reports whether labels mark an object as owned by this installation.
+func (s *Server) ours(labels map[string]string) bool {
+	return labels[protocol.LabelManaged] == "true" && labels[protocol.LabelInstance] == s.cfg.Instance
+}
+
+func (s *Server) ownedFilter(extra ...string) []string {
+	return append([]string{protocol.LabelManaged + "=true", protocol.LabelInstance + "=" + s.cfg.Instance}, extra...)
+}
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -154,7 +165,7 @@ func (s *Server) owned(ctx context.Context, id string) (*docker.ContainerJSON, e
 	if err != nil {
 		return nil, err
 	}
-	if c.Config.Labels[protocol.LabelManaged] != "true" || c.Config.Labels[protocol.LabelRole] != "app" {
+	if !s.ours(c.Config.Labels) || c.Config.Labels[protocol.LabelRole] != "app" {
 		return nil, &docker.APIError{Status: 404, Message: "not a DeployForge application container"}
 	}
 	return c, nil
@@ -280,7 +291,7 @@ func (s *Server) ensureNetwork(w http.ResponseWriter, r *http.Request) {
 	n, err := s.docker.InspectNetwork(ctx, name)
 	if docker.IsNotFound(err) {
 		_, err = s.docker.CreateNetwork(ctx, name, map[string]string{
-			protocol.LabelManaged: "true", protocol.LabelWorkspace: req.WorkspaceID, protocol.LabelApplication: req.ApplicationID,
+			protocol.LabelManaged: "true", protocol.LabelInstance: s.cfg.Instance, protocol.LabelWorkspace: req.WorkspaceID, protocol.LabelApplication: req.ApplicationID,
 		})
 		if err == nil {
 			n, err = s.docker.InspectNetwork(ctx, name)
@@ -290,12 +301,12 @@ func (s *Server) ensureNetwork(w http.ResponseWriter, r *http.Request) {
 		s.dockerErr(w, err)
 		return
 	}
-	if n.Labels[protocol.LabelManaged] != "true" || n.Labels[protocol.LabelApplication] != req.ApplicationID {
+	if !s.ours(n.Labels) || n.Labels[protocol.LabelApplication] != req.ApplicationID {
 		writeErr(w, http.StatusConflict, "network_not_owned", "a network with this name exists but is not owned by DeployForge", false)
 		return
 	}
 	attach := []string{}
-	proxies, err := s.docker.ListContainers(ctx, protocol.LabelRole+"=proxy")
+	proxies, err := s.docker.ListContainers(ctx, protocol.LabelRole+"=proxy", protocol.LabelInstance+"="+s.cfg.Instance)
 	if err != nil {
 		s.dockerErr(w, err)
 		return
@@ -340,7 +351,7 @@ func (s *Server) removeNetwork(w http.ResponseWriter, r *http.Request) {
 		s.dockerErr(w, err)
 		return
 	}
-	if n.Labels[protocol.LabelManaged] != "true" || n.Labels[protocol.LabelApplication] != app {
+	if !s.ours(n.Labels) || n.Labels[protocol.LabelApplication] != app {
 		writeErr(w, http.StatusConflict, "network_not_owned", "network is not owned by DeployForge", false)
 		return
 	}
@@ -364,7 +375,7 @@ func (s *Server) removeNetwork(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listContainers(w http.ResponseWriter, r *http.Request) {
-	labels := []string{protocol.LabelManaged + "=true", protocol.LabelRole + "=app"}
+	labels := s.ownedFilter(protocol.LabelRole + "=app")
 	if app := r.URL.Query().Get("applicationId"); app != "" {
 		if !idRe.MatchString(app) {
 			writeErr(w, http.StatusBadRequest, "bad_request", "invalid application id", false)
@@ -402,7 +413,7 @@ func (s *Server) createContainer(w http.ResponseWriter, r *http.Request) {
 
 	// Idempotency: the deterministic container name is the key.
 	if existing, err := s.docker.InspectContainer(ctx, req.Name); err == nil {
-		if existing.Config.Labels[protocol.LabelDeployment] != req.DeploymentID || existing.Config.Labels[protocol.LabelManaged] != "true" {
+		if existing.Config.Labels[protocol.LabelDeployment] != req.DeploymentID || !s.ours(existing.Config.Labels) {
 			writeErr(w, http.StatusConflict, "name_conflict", "container name belongs to another deployment", false)
 			return
 		}
@@ -427,7 +438,7 @@ func (s *Server) createContainer(w http.ResponseWriter, r *http.Request) {
 		s.dockerErr(w, err)
 		return
 	}
-	if img.Config.Labels[protocol.LabelManaged] != "true" || img.Config.Labels[protocol.LabelApplication] != req.ApplicationID {
+	if !s.ours(img.Config.Labels) || img.Config.Labels[protocol.LabelApplication] != req.ApplicationID {
 		writeErr(w, http.StatusForbidden, "image_not_owned", "image was not built by DeployForge for this application", false)
 		return
 	}
@@ -436,7 +447,7 @@ func (s *Server) createContainer(w http.ResponseWriter, r *http.Request) {
 		s.dockerErr(w, err)
 		return
 	}
-	if net.Labels[protocol.LabelManaged] != "true" || net.Labels[protocol.LabelApplication] != req.ApplicationID {
+	if !s.ours(net.Labels) || net.Labels[protocol.LabelApplication] != req.ApplicationID {
 		writeErr(w, http.StatusForbidden, "network_not_owned", "network is not this application's network", false)
 		return
 	}
@@ -456,7 +467,7 @@ func (s *Server) createContainer(w http.ResponseWriter, r *http.Request) {
 		Image: img.ID,
 		Env:   env,
 		Labels: map[string]string{
-			protocol.LabelManaged: "true", protocol.LabelRole: "app",
+			protocol.LabelManaged: "true", protocol.LabelInstance: s.cfg.Instance, protocol.LabelRole: "app",
 			protocol.LabelWorkspace: req.WorkspaceID, protocol.LabelApplication: req.ApplicationID, protocol.LabelDeployment: req.DeploymentID,
 		},
 		ExposedPorts: map[string]struct{}{fmt.Sprintf("%d/tcp", req.Port): {}},
@@ -780,7 +791,7 @@ func MemoryUsage(st *docker.Stats) uint64 {
 }
 
 func (s *Server) listImages(w http.ResponseWriter, r *http.Request) {
-	labels := []string{protocol.LabelManaged + "=true"}
+	labels := s.ownedFilter()
 	if app := r.URL.Query().Get("applicationId"); app != "" {
 		if !idRe.MatchString(app) {
 			writeErr(w, http.StatusBadRequest, "bad_request", "invalid application id", false)
@@ -819,7 +830,7 @@ func (s *Server) removeImage(w http.ResponseWriter, r *http.Request) {
 		s.dockerErr(w, err)
 		return
 	}
-	if img.Config.Labels[protocol.LabelManaged] != "true" {
+	if !s.ours(img.Config.Labels) {
 		writeErr(w, http.StatusForbidden, "image_not_owned", "refusing to remove an image DeployForge did not build", false)
 		return
 	}

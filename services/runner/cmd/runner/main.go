@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -67,6 +68,10 @@ func run(logger *slog.Logger) error {
 			}
 		}
 	}
+	instance := env("DEPLOYFORGE_INSTANCE_ID", "default")
+	if !regexp.MustCompile(`^[a-z0-9-]{1,40}$`).MatchString(instance) {
+		return fmt.Errorf("DEPLOYFORGE_INSTANCE_ID must match [a-z0-9-]{1,40}")
+	}
 	maxBuilds, _ := strconv.Atoi(env("RUNNER_MAX_CONCURRENT_BUILDS", "2"))
 	git := gitops.Policy{
 		AllowedHosts:      list("RUNNER_GIT_ALLOWED_HOSTS", "github.com"),
@@ -90,8 +95,8 @@ func run(logger *slog.Logger) error {
 	if env("RUNNER_ATTACH_SELF", "false") == "true" {
 		self, _ = os.Hostname()
 	}
-	bm := build.NewManager(build.Config{WorkDir: workDir, DockerHost: "unix://" + socket, MaxConcurrent: maxBuilds, Git: git, Logger: logger}, d)
-	srv := server.New(server.Config{Secret: []byte(secret), SelfContainer: self, Git: git, Logger: logger}, d, bm)
+	bm := build.NewManager(build.Config{Instance: instance, WorkDir: workDir, DockerHost: "unix://" + socket, MaxConcurrent: maxBuilds, Git: git, Logger: logger}, d)
+	srv := server.New(server.Config{Secret: []byte(secret), Instance: instance, SelfContainer: self, Git: git, Logger: logger}, d, bm)
 
 	addr, err := listenAddr(d, self)
 	if err != nil {
@@ -113,7 +118,7 @@ func run(logger *slog.Logger) error {
 		_ = hs.Shutdown(c)
 	}()
 	_ = os.WriteFile("/tmp/deployforge-runner.addr", []byte(addr), 0o644)
-	logger.Info("runner listening", "addr", addr, "maxConcurrentBuilds", maxBuilds, "gitHosts", git.AllowedHosts)
+	logger.Info("runner listening", "addr", addr, "maxConcurrentBuilds", maxBuilds, "instance", instance, "gitHosts", git.AllowedHosts)
 	if err := hs.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return err
 	}
