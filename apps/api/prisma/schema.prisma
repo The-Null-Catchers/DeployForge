@@ -1,0 +1,478 @@
+// DeployForge data model. See docs/data-model.md for an overview diagram.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  owner
+  developer
+  viewer
+}
+
+enum SessionKind {
+  browser
+  mobile
+}
+
+enum DeploymentStatus {
+  queued
+  preparing
+  cloning
+  building
+  starting
+  checking_health
+  promoting
+  succeeded
+  failed
+  canceled
+  interrupted
+}
+
+enum ReleaseState {
+  none
+  active
+  superseded
+}
+
+enum DeploymentTrigger {
+  manual
+  push
+  rollback
+  redeploy
+}
+
+enum SourceType {
+  github
+  public
+}
+
+enum DesiredState {
+  running
+  stopped
+}
+
+enum DomainKind {
+  platform
+  custom
+}
+
+enum DomainStatus {
+  pending_verification
+  verified
+  active
+  error
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  name            String
+  passwordHash    String
+  isInstanceAdmin Boolean   @default(false)
+  disabledAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  memberships Membership[]
+  sessions    Session[]
+}
+
+/// A login session. Browser sessions are identified by a cookie token;
+/// mobile sessions by rotating refresh tokens. Access tokens reference the
+/// session so revocation takes effect immediately.
+model Session {
+  id           String      @id @default(cuid())
+  userId       String
+  kind         SessionKind
+  tokenHash    String?     @unique
+  csrfSecret   String?
+  deviceName   String?
+  userAgent    String?
+  ip           String?
+  createdAt    DateTime    @default(now())
+  lastSeenAt   DateTime    @default(now())
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  revokeReason String?
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
+
+  @@index([userId])
+}
+
+model RefreshToken {
+  id           String    @id @default(cuid())
+  sessionId    String
+  tokenHash    String    @unique
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime
+  usedAt       DateTime?
+  replacedById String?
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships   Membership[]
+  invites       Invite[]
+  projects      Project[]
+  applications  Application[]
+  installations GithubInstallation[]
+}
+
+model Membership {
+  workspaceId String
+  userId      String
+  role        Role
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, userId])
+  @@index([userId])
+}
+
+model Invite {
+  id          String    @id @default(cuid())
+  workspaceId String
+  email       String
+  role        Role
+  tokenHash   String    @unique
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  applications Application[]
+
+  @@unique([workspaceId, name])
+}
+
+model Application {
+  id          String @id @default(cuid())
+  workspaceId String
+  projectId   String
+  name        String
+  /// Globally unique: used for the platform hostname <slug>.<apps domain>.
+  slug        String @unique
+
+  sourceType           SourceType
+  repoUrl              String
+  repoFullName         String
+  githubInstallationId String?
+  githubRepositoryId   Int?
+  sourceStatus         String     @default("ok")
+
+  branch                   String
+  contextDir               String
+  dockerfilePath           String
+  port                     Int
+  healthPath               String
+  healthTimeoutSeconds     Int
+  healthIntervalSeconds    Int
+  healthStartPeriodSeconds Int
+  healthRetries            Int
+  cpuLimit                 Float
+  memoryLimitMb            Int
+  autoDeploy               Boolean
+  securityProfile          String       @default("standard")
+  desiredState             DesiredState @default(running)
+  /// Last container state observed by the reconciler (running, exited, missing...).
+  observedState            String?
+  observedAt               DateTime?
+
+  currentConfigRevisionId String?
+  currentEnvRevisionId    String?
+  activeDeploymentId      String? @unique
+  nextDeploymentNumber    Int     @default(1)
+
+  /// Deployment coordination lease with a fencing token. The worker that
+  /// holds (lockDeploymentId, lockToken) may promote; stale workers fail the
+  /// conditional update. See docs/deployment-engine.md.
+  lockDeploymentId String?
+  lockToken        Int       @default(0)
+  lockExpiresAt    DateTime?
+
+  deletingAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  installation       GithubInstallation? @relation(fields: [githubInstallationId], references: [id], onDelete: SetNull)
+  activeDeployment   Deployment?         @relation("ActiveDeployment", fields: [activeDeploymentId], references: [id], onDelete: SetNull)
+  deployments        Deployment[]        @relation("AppDeployments")
+  configRevisions    ConfigRevision[]
+  envRevisions       EnvRevision[]
+  domains            Domain[]
+
+  @@index([workspaceId])
+  @@index([githubInstallationId, githubRepositoryId])
+}
+
+/// Immutable snapshot of build/runtime settings used by a deployment.
+model ConfigRevision {
+  id            String   @id @default(cuid())
+  applicationId String
+  number        Int
+  config        Json
+  createdById   String?
+  createdAt     DateTime @default(now())
+
+  application Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  deployments Deployment[]
+
+  @@unique([applicationId, number])
+}
+
+/// Immutable snapshot of environment variables. Every value is encrypted
+/// with AES-256-GCM under a versioned master key (see src/crypto).
+model EnvRevision {
+  id            String   @id @default(cuid())
+  applicationId String
+  number        Int
+  entries       Json
+  createdById   String?
+  createdAt     DateTime @default(now())
+
+  application Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  deployments Deployment[]
+
+  @@unique([applicationId, number])
+}
+
+model Deployment {
+  id            String            @id @default(cuid())
+  workspaceId   String
+  applicationId String
+  number        Int
+  trigger       DeploymentTrigger
+  actorId       String?
+  status        DeploymentStatus  @default(queued)
+  releaseState  ReleaseState      @default(none)
+
+  branch        String?
+  commitSha     String?
+  commitMessage String?
+
+  configRevisionId String
+  envRevisionId    String
+
+  imageId       String?
+  imageTag      String?
+  containerId   String?
+  containerName String?
+
+  rollbackOfId     String?
+  previousActiveId String?
+
+  failureCategory String?
+  failureStage    String?
+  errorMessage    String?
+
+  cancelRequestedAt DateTime?
+  idempotencyKey    String?   @unique
+  pinned            Boolean   @default(false)
+  imagePrunedAt     DateTime?
+  attempts          Int       @default(0)
+
+  logLines       Int       @default(0)
+  logBytes       Int       @default(0)
+  logsTruncated  Boolean   @default(false)
+  logsExpiredAt  DateTime?
+
+  queuedAt     DateTime  @default(now())
+  startedAt    DateTime?
+  promotedAt   DateTime?
+  finishedAt   DateTime?
+  supersededAt DateTime?
+  retiredAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  application    Application       @relation("AppDeployments", fields: [applicationId], references: [id], onDelete: Cascade)
+  activeFor      Application?      @relation("ActiveDeployment")
+  configRevision ConfigRevision    @relation(fields: [configRevisionId], references: [id])
+  envRevision    EnvRevision       @relation(fields: [envRevisionId], references: [id])
+  rollbackOf     Deployment?       @relation("Rollback", fields: [rollbackOfId], references: [id], onDelete: SetNull)
+  rollbacks      Deployment[]      @relation("Rollback")
+  stages         DeploymentStage[]
+  events         DeploymentEvent[]
+  logs           DeploymentLog[]
+
+  @@unique([applicationId, number])
+  @@index([applicationId, status])
+  @@index([status])
+  @@index([workspaceId, createdAt])
+}
+
+model DeploymentStage {
+  id           String    @id @default(cuid())
+  deploymentId String
+  stage        String
+  startedAt    DateTime  @default(now())
+  finishedAt   DateTime?
+  outcome      String    @default("running")
+
+  deployment Deployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+
+  @@index([deploymentId])
+}
+
+model DeploymentEvent {
+  id           BigInt   @id @default(autoincrement())
+  deploymentId String
+  ts           DateTime @default(now())
+  type         String
+  level        String   @default("info")
+  message      String
+
+  deployment Deployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+
+  @@index([deploymentId, id])
+}
+
+/// Build output. `id` is a stable, monotonically increasing event ID used as
+/// the SSE cursor (Last-Event-ID).
+model DeploymentLog {
+  id           BigInt   @id @default(autoincrement())
+  deploymentId String
+  ts           DateTime
+  stream       String
+  text         String
+
+  deployment Deployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+
+  @@index([deploymentId, id])
+}
+
+model Domain {
+  id                String       @id @default(cuid())
+  workspaceId       String
+  applicationId     String
+  hostname          String       @unique
+  kind              DomainKind
+  status            DomainStatus
+  verificationToken String?
+  verifiedAt        DateTime?
+  dnsObserved       Json?
+  dnsOk             Boolean?
+  dnsCheckedAt      DateTime?
+  lastError         String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+}
+
+model AuditEvent {
+  id          String   @id @default(cuid())
+  workspaceId String?
+  actorId     String?
+  action      String
+  targetType  String
+  targetId    String?
+  metadata    Json     @default("{}")
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([workspaceId, createdAt])
+}
+
+/// Transactional outbox. Rows are written in the same transaction as the
+/// state change they describe and relayed to BullMQ by the dispatcher.
+model OutboxEvent {
+  id           BigInt    @id @default(autoincrement())
+  kind         String
+  payload      Json
+  dedupeKey    String?   @unique
+  createdAt    DateTime  @default(now())
+  availableAt  DateTime  @default(now())
+  dispatchedAt DateTime?
+  attempts     Int       @default(0)
+  lastError    String?
+
+  @@index([dispatchedAt, availableAt])
+}
+
+model WebhookDelivery {
+  id             String    @id
+  event          String
+  action         String?
+  installationId Int?
+  receivedAt     DateTime  @default(now())
+  processedAt    DateTime?
+  status         String    @default("received")
+  error          String?
+  payload        Json
+}
+
+model GithubInstallation {
+  id                   String   @id @default(cuid())
+  workspaceId          String
+  githubInstallationId Int      @unique
+  accountLogin         String
+  accountType          String
+  status               String   @default("active")
+  createdById          String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  applications Application[]
+
+  @@index([workspaceId])
+}
+
+model GithubConnectState {
+  id          String    @id @default(cuid())
+  stateHash   String    @unique
+  workspaceId String
+  userId      String
+  returnTo    String    @default("web")
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+/// Small key/value store for platform status (proxy sync, reconciler runs).
+model PlatformState {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}

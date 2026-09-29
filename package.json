@@ -11,7 +11,8 @@
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "dev": "pnpm --parallel --filter @deployforge/api --filter @deployforge/web run dev",
-    "dev:infra": "docker compose -f infra/compose.yaml -f infra/compose.dev.yaml --env-file .env up -d postgres redis caddy runner",
+    "dev:infra": "docker compose -f infra/compose.yaml -f infra/compose.dev.yaml --env-file .env up -d postgres redis caddy",
+    "dev:runner": "bash scripts/dev-runner.sh",
     "build": "pnpm -r run build",
     "lint": "pnpm -r run lint",
     "format": "prettier --write .",

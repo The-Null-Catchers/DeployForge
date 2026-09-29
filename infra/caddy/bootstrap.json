@@ -1,0 +1,28 @@
+{
+  "admin": {
+    "listen": "unix//run/caddy-admin/admin.sock|0666",
+    "config": { "persist": true }
+  },
+  "apps": {
+    "http": {
+      "servers": {
+        "public": {
+          "listen": [":80"],
+          "automatic_https": { "disable": true },
+          "routes": [
+            {
+              "handle": [
+                {
+                  "handler": "static_response",
+                  "status_code": 503,
+                  "headers": { "Content-Type": ["text/plain; charset=utf-8"], "Retry-After": ["5"] },
+                  "body": "DeployForge is starting; routes will be loaded shortly.\n"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

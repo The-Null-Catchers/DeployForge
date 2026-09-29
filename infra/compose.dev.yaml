@@ -1,0 +1,23 @@
+# Local development overlay: run PostgreSQL, Redis and Caddy in Docker and
+# the API, worker, runner and web dev server on the host.
+#
+#   pnpm dev:infra          # this file
+#   pnpm dev:runner         # Go runner on the host (needs Docker access)
+#   pnpm dev                # API (+worker) and Vite
+#
+# Everything is bound to 127.0.0.1. Applications are reachable at
+# http://<slug>.localhost:8080 (browsers resolve *.localhost to loopback).
+services:
+  postgres:
+    ports: ["127.0.0.1:5432:5432"]
+  redis:
+    ports: ["127.0.0.1:6379:6379"]
+  caddy:
+    ports: !override
+      - "127.0.0.1:${DEV_HTTP_PORT:-8080}:80"
+      - "127.0.0.1:9080:9080"
+    volumes: !override
+      - ./caddy/bootstrap.json:/etc/caddy/bootstrap.json:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - ../.tmp/caddy-admin:/run/caddy-admin
