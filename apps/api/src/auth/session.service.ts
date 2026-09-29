@@ -81,7 +81,7 @@ export class SessionService {
       };
       return { pair };
     });
-    if ('pair' in result) return result.pair;
+    if ('pair' in result && result.pair) return result.pair;
     if (result.error === 'reused') {
       // Committed outside the transaction above so the revocation sticks.
       await this.revoke(result.sessionId, 'refresh_token_reuse');

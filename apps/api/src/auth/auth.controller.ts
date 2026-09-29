@@ -53,6 +53,8 @@ export class AuthController {
       githubEnabled: this.config.GITHUB_MODE !== 'disabled',
       appsDomain: this.config.APPS_DOMAIN,
       tlsMode: this.config.TLS_MODE,
+      // Test-only extra git hosts (empty in production; refused by config validation there).
+      gitExtraAllowedHosts: this.config.GIT_EXTRA_ALLOWED_HOSTS,
       version: '0.1.0',
     };
   }

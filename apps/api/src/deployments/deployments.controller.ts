@@ -248,7 +248,7 @@ export class DeploymentsController {
         if (Date.now() - lastSessionCheck > 60_000) {
           lastSessionCheck = Date.now();
           if (!(await this.sessions.isSessionValid(auth.sessionId))) {
-            await sse.send('error', { code: 'session_expired', message: 'Your session has ended' });
+            await sse.send('stream-error', { code: 'session_expired', message: 'Your session has ended' });
             break;
           }
         }
@@ -301,7 +301,7 @@ export class DeploymentsController {
     const sessionTimer = setInterval(() => {
       void this.sessions.isSessionValid(auth.sessionId).then(async (ok) => {
         if (!ok) {
-          await sse.send('error', { code: 'session_expired', message: 'Your session has ended' });
+          await sse.send('stream-error', { code: 'session_expired', message: 'Your session has ended' });
           sse.close();
         }
       });
@@ -320,7 +320,7 @@ export class DeploymentsController {
       await sse.send('end', { reason: 'container_stopped' });
     } catch (e) {
       if (!abort.signal.aborted) {
-        await sse.send('error', { code: e instanceof RunnerError && e.status === 404 ? 'container_removed' : 'runner_unreachable', message: 'Runtime log stream interrupted' });
+        await sse.send('stream-error', { code: e instanceof RunnerError && e.status === 404 ? 'container_removed' : 'runner_unreachable', message: 'Runtime log stream interrupted' });
       }
     } finally {
       clearInterval(sessionTimer);
