@@ -26,11 +26,8 @@ export function buildOpenApi(app: NestExpressApplication) {
   return SwaggerModule.createDocument(app, doc);
 }
 
-async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true, rawBody: true });
-  const config = app.get<AppConfig>(CONFIG);
-  app.useLogger(app.get(Logger));
-  app.enableShutdownHooks();
+/** HTTP middleware shared by the server and the integration tests. */
+export function configureApp(app: NestExpressApplication, config: AppConfig): void {
   if (config.TRUST_PROXY) app.set('trust proxy', 1);
   app.disable('x-powered-by');
   app.use(
@@ -51,6 +48,14 @@ async function bootstrap(): Promise<void> {
   );
   app.use(cookieParser());
   app.useBodyParser('json', { limit: '2mb' });
+}
+
+async function bootstrap(): Promise<void> {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true, rawBody: true });
+  const config = app.get<AppConfig>(CONFIG);
+  app.useLogger(app.get(Logger));
+  app.enableShutdownHooks();
+  configureApp(app, config);
 
   if (config.DEPLOYFORGE_PROCESS !== 'worker') {
     if (config.apiDocsEnabled) {

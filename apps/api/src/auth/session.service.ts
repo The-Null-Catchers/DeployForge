@@ -58,36 +58,37 @@ export class SessionService {
   async refresh(refreshToken: string): Promise<TokenPair> {
     const hash = sha256Hex(refreshToken);
     const now = new Date();
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const rt = await tx.refreshToken.findUnique({ where: { tokenHash: hash }, include: { session: { include: { user: true } } } });
-      if (!rt) throw unauthorized('Invalid refresh token', 'invalid_refresh_token');
+      if (!rt) return { error: 'invalid' as const };
       const s = rt.session;
-      if (rt.usedAt) {
-        await tx.session.update({ where: { id: s.id }, data: { revokedAt: now, revokeReason: 'refresh_token_reuse' } });
-        throw unauthorized('Refresh token reuse detected; the session has been revoked', 'refresh_token_reused');
-      }
-      if (s.revokedAt || s.expiresAt <= now || rt.expiresAt <= now || s.user.disabledAt) {
-        throw unauthorized('Session expired', 'session_expired');
-      }
+      if (rt.usedAt) return { error: 'reused' as const, sessionId: s.id };
+      if (s.revokedAt || s.expiresAt <= now || rt.expiresAt <= now || s.user.disabledAt) return { error: 'expired' as const };
       // Conditional update so two concurrent refreshes cannot both succeed.
       const claimed = await tx.refreshToken.updateMany({ where: { id: rt.id, usedAt: null }, data: { usedAt: now } });
-      if (claimed.count !== 1) {
-        await tx.session.update({ where: { id: s.id }, data: { revokedAt: now, revokeReason: 'refresh_token_reuse' } });
-        throw unauthorized('Refresh token reuse detected; the session has been revoked', 'refresh_token_reused');
-      }
+      if (claimed.count !== 1) return { error: 'reused' as const, sessionId: s.id };
       await tx.session.update({ where: { id: s.id }, data: { lastSeenAt: now } });
       const newToken = randomToken('dfr_');
       const created = await tx.refreshToken.create({ data: { sessionId: s.id, tokenHash: sha256Hex(newToken), expiresAt: s.expiresAt } });
       await tx.refreshToken.update({ where: { id: rt.id }, data: { replacedById: created.id } });
       const exp = Math.floor(Date.now() / 1000) + this.config.ACCESS_TOKEN_TTL_SECONDS;
-      return {
+      const pair: TokenPair = {
         accessToken: signAccessToken({ sid: s.id, uid: s.userId, exp }, this.config.SESSION_SECRET),
         accessTokenExpiresAt: new Date(exp * 1000).toISOString(),
         refreshToken: newToken,
         refreshTokenExpiresAt: s.expiresAt.toISOString(),
         sessionId: s.id,
       };
+      return { pair };
     });
+    if ('pair' in result) return result.pair;
+    if (result.error === 'reused') {
+      // Committed outside the transaction above so the revocation sticks.
+      await this.revoke(result.sessionId, 'refresh_token_reuse');
+      throw unauthorized('Refresh token reuse detected; the session has been revoked', 'refresh_token_reused');
+    }
+    if (result.error === 'expired') throw unauthorized('Session expired', 'session_expired');
+    throw unauthorized('Invalid refresh token', 'invalid_refresh_token');
   }
 
   async authenticateCookie(token: string): Promise<{ ctx: AuthContext; csrfSecret: string } | null> {
