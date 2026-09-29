@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "protocolVersion": 1,
+  "runnerVersion": "0.1.0",
+  "docker": { "ok": true, "version": "29.3.1" },
+  "buildx": { "ok": true, "version": "v0.31.1" },
+  "activeBuilds": 0,
+  "maxConcurrentBuilds": 2
+}

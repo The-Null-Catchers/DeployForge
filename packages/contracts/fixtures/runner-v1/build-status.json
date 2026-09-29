@@ -1,0 +1,13 @@
+{
+  "operationId": "build-cm1a2b3c4d5e6f7g8h9",
+  "state": "succeeded",
+  "phase": "done",
+  "commitSha": "0123456789abcdef0123456789abcdef01234567",
+  "imageId": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "logs": [
+    { "seq": 1, "ts": "2026-09-29T12:00:00.000Z", "stream": "system", "text": "Cloning repository" },
+    { "seq": 2, "ts": "2026-09-29T12:00:01.000Z", "stream": "stderr", "text": "#1 [internal] load build definition from Dockerfile" }
+  ],
+  "nextSeq": 3,
+  "logsTruncated": false
+}

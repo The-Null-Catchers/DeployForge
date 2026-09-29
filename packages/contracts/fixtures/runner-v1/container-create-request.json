@@ -1,0 +1,15 @@
+{
+  "operationId": "start-cm1deployment000001",
+  "workspaceId": "cm1workspace0000001",
+  "applicationId": "cm1application00001",
+  "deploymentId": "cm1deployment000001",
+  "name": "df-web-d1-cm1deployment000001",
+  "image": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "env": { "PORT": "3000", "GREETING": "hello" },
+  "port": 3000,
+  "cpuLimit": 0.5,
+  "memoryLimitMb": 256,
+  "pidsLimit": 512,
+  "securityProfile": "standard",
+  "network": "df-app-cm1application00001"
+}

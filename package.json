@@ -1,0 +1,32 @@
+{
+  "name": "deployforge",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Self-hosted, single-server deployment platform for trusted teams",
+  "license": "MIT",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "pnpm --parallel --filter @deployforge/api --filter @deployforge/web run dev",
+    "dev:infra": "docker compose -f infra/compose.yaml -f infra/compose.dev.yaml --env-file .env up -d postgres redis caddy runner",
+    "build": "pnpm -r run build",
+    "lint": "pnpm -r run lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "test:integration": "pnpm --filter @deployforge/api run test:integration",
+    "test:e2e": "pnpm --filter @deployforge/web run test:e2e",
+    "test:acceptance": "bash scripts/acceptance.sh",
+    "db:migrate": "pnpm --filter @deployforge/api run db:migrate",
+    "db:migrate:dev": "pnpm --filter @deployforge/api run db:migrate:dev",
+    "backup": "bash scripts/backup.sh",
+    "restore": "bash scripts/restore.sh"
+  },
+  "devDependencies": {
+    "prettier": "3.9.9"
+  }
+}

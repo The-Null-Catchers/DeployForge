@@ -1,0 +1,18 @@
+{
+  "operationId": "build-cm1a2b3c4d5e6f7g8h9",
+  "workspaceId": "cm1workspace0000001",
+  "applicationId": "cm1application00001",
+  "deploymentId": "cm1deployment000001",
+  "repository": {
+    "cloneUrl": "https://github.com/acme/web.git",
+    "commitSha": "0123456789abcdef0123456789abcdef01234567",
+    "auth": { "username": "x-access-token", "token": "ghs_exampleexampleexample" }
+  },
+  "contextDir": ".",
+  "dockerfilePath": "Dockerfile",
+  "buildArgs": { "APP_VERSION": "A" },
+  "buildSecrets": [{ "id": "NPM_TOKEN", "value": "npm_secretvalue" }],
+  "imageTag": "deployforge/cm1application00001:cm1deployment000001",
+  "timeoutSeconds": 900,
+  "redact": ["npm_secretvalue"]
+}
