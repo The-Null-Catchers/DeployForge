@@ -169,10 +169,9 @@ func (m *Manager) resolveImage(ctx context.Context, iid, configDigest, tag strin
 	if img == nil || !imageIDPattern.MatchString(img.ID) {
 		return nil, fmt.Errorf("built image identity does not match")
 	}
-	if configDigest != "" && img.ID != configDigest {
-		return nil, fmt.Errorf("built image identity does not match: expected config %s, loaded %s", configDigest, img.ID)
-	}
-	match := img.ID == expected
+	// Engine image stores may expose either the config ID or the manifest ID.
+	// Both must come from this build; never accept a tag without digest proof.
+	match := img.ID == expected || img.ID == iid
 	if byTag {
 		match = match || img.Descriptor.Digest == iid
 		for _, digest := range img.RepoDigests {
@@ -180,7 +179,7 @@ func (m *Manager) resolveImage(ctx context.Context, iid, configDigest, tag strin
 		}
 	}
 	if !match {
-		return nil, fmt.Errorf("built image identity does not match")
+		return nil, fmt.Errorf("built image identity does not match: iid %s, config %s, loaded %s, descriptor %s", iid, configDigest, img.ID, img.Descriptor.Digest)
 	}
 	return img, nil
 }

@@ -78,14 +78,14 @@ for arg in "$@"; do
 
 func TestImageResolutionAcrossExporters(t *testing.T) {
 	manifest := "sha256:" + strings.Repeat("b", 64)
-	for _, scenario := range []string{"iid only", "descriptor", "repository digest", "mismatched tag", "wrong config", "unavailable"} {
+	for _, scenario := range []string{"iid only", "manifest image ID", "descriptor", "repository digest", "mismatched tag", "wrong config", "unavailable"} {
 		t.Run(scenario, func(t *testing.T) {
 			m := manager(t, 1)
 			iid, config := manifest, ""
 			if scenario == "iid only" {
 				iid = testImage
 			}
-			if scenario == "wrong config" {
+			if scenario == "wrong config" || scenario == "manifest image ID" {
 				config = "sha256:" + strings.Repeat("c", 64)
 			}
 			m.inspect = func(ctx context.Context, ref string) (*docker.ImageInspect, error) {
@@ -93,7 +93,10 @@ func TestImageResolutionAcrossExporters(t *testing.T) {
 					return nil, &docker.APIError{Status: 404, Message: "not found"}
 				}
 				img, _ := inspectFixture(ctx, testImage)
-				if scenario == "descriptor" || scenario == "wrong config" {
+				if scenario == "manifest image ID" {
+					img.ID = manifest
+				}
+				if scenario == "descriptor" {
 					img.Descriptor.Digest = manifest
 				}
 				if scenario == "repository digest" {
@@ -102,8 +105,12 @@ func TestImageResolutionAcrossExporters(t *testing.T) {
 				return img, nil
 			}
 			img, err := m.resolveImage(context.Background(), iid, config, request().ImageTag)
-			wantOK := scenario == "iid only" || scenario == "descriptor" || scenario == "repository digest"
-			if wantOK && (err != nil || img.ID != testImage) {
+			wantID := testImage
+			if scenario == "manifest image ID" {
+				wantID = manifest
+			}
+			wantOK := scenario == "iid only" || scenario == "manifest image ID" || scenario == "descriptor" || scenario == "repository digest"
+			if wantOK && (err != nil || img.ID != wantID) {
 				t.Fatalf("exporter not supported: %+v %v", img, err)
 			}
 			if !wantOK && err == nil {

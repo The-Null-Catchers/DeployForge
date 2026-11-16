@@ -10,7 +10,8 @@ Success requires a verified `sha256` image identity and matching Docker inspecti
 and all ownership labels. Clone, configuration, build, timeout, cancellation and
 internal failures retain distinct protocol classifications.
 
-The config digest from Buildx metadata identifies the loaded image when present.
+Engine stores may identify an image by its config or manifest digest. Both are
+checked against this build's iid and optional config metadata.
 Other exporters only return an iid. If that iid is a manifest digest unavailable
 through a direct lookup, the owned tag must expose a matching immutable descriptor
 or repository digest before its local image ID can be used. A tag alone never
