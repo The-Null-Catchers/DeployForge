@@ -115,6 +115,10 @@ jobs:
           name: deployforge-acceptance-report
           path: docs/acceptance-report.md
           if-no-files-found: ignore
+      - name: Inspect remaining fixture image identities
+        if: failure()
+        run: |
+          docker image ls -q --filter label=io.deployforge.instance=acceptance | sort -u | xargs -r docker image inspect --format '{{.Id}} {{json .RepoTags}} {{json .RepoDigests}} {{json .Descriptor}}'
       - if: always()
         run: bash scripts/acceptance.sh down
 

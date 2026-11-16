@@ -45,7 +45,7 @@ for arg in "$@"; do
   if [ "$previous" = --iidfile ]; then printf 'sha256:%s\n' > "$arg"; fi
 `, strings.Repeat("b", 64))
 			if scenario == "invalid metadata" {
-				body += "  if [ \"$previous\" = --metadata-file ]; then printf '{}' > \"$arg\"; fi\n"
+				body += "  if [ \"$previous\" = --metadata-file ]; then printf '{\"containerimage.config.digest\":\"bad\"}' > \"$arg\"; fi\n"
 			}
 			body += "  previous=\"$arg\"\ndone\n"
 			fakeDocker(t, body)
@@ -71,6 +71,43 @@ for arg in "$@"; do
 				}
 			} else if s.State != "failed" || s.FailureKind != "internal" || s.ImageID != "" {
 				t.Fatalf("invalid image identity accepted: %+v", s)
+			}
+		})
+	}
+}
+
+func TestImageResolutionAcrossExporters(t *testing.T) {
+	manifest := "sha256:" + strings.Repeat("b", 64)
+	for _, scenario := range []string{"iid only", "descriptor", "repository digest", "mismatched tag", "wrong config", "unavailable"} {
+		t.Run(scenario, func(t *testing.T) {
+			m := manager(t, 1)
+			iid, config := manifest, ""
+			if scenario == "iid only" {
+				iid = testImage
+			}
+			if scenario == "wrong config" {
+				config = "sha256:" + strings.Repeat("c", 64)
+			}
+			m.inspect = func(ctx context.Context, ref string) (*docker.ImageInspect, error) {
+				if scenario == "unavailable" || (ref != request().ImageTag && scenario != "iid only") {
+					return nil, &docker.APIError{Status: 404, Message: "not found"}
+				}
+				img, _ := inspectFixture(ctx, testImage)
+				if scenario == "descriptor" || scenario == "wrong config" {
+					img.Descriptor.Digest = manifest
+				}
+				if scenario == "repository digest" {
+					img.RepoDigests = []string{"deployforge/application001@" + manifest}
+				}
+				return img, nil
+			}
+			img, err := m.resolveImage(context.Background(), iid, config, request().ImageTag)
+			wantOK := scenario == "iid only" || scenario == "descriptor" || scenario == "repository digest"
+			if wantOK && (err != nil || img.ID != testImage) {
+				t.Fatalf("exporter not supported: %+v %v", img, err)
+			}
+			if !wantOK && err == nil {
+				t.Fatal("unverified image accepted")
 			}
 		})
 	}

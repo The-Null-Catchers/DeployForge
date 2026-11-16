@@ -241,7 +241,11 @@ type ImageInspect struct {
 	Config struct {
 		Labels map[string]string `json:"Labels"`
 	} `json:"Config"`
-	RepoTags []string `json:"RepoTags"`
+	RepoTags    []string `json:"RepoTags"`
+	RepoDigests []string `json:"RepoDigests"`
+	Descriptor  struct {
+		Digest string `json:"digest"`
+	} `json:"Descriptor"`
 }
 
 type Network struct {

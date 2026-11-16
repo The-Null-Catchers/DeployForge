@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/the-null-catchers/deployforge/services/runner/internal/docker"
 	"github.com/the-null-catchers/deployforge/services/runner/internal/gitops"
 	"github.com/the-null-catchers/deployforge/services/runner/internal/paths"
 	"github.com/the-null-catchers/deployforge/services/runner/internal/protocol"
@@ -130,26 +131,58 @@ func (m *Manager) execute(ctx context.Context, op *operation, r protocol.BuildRe
 	var metadata struct {
 		ConfigDigest string `json:"containerimage.config.digest"`
 	}
-	if json.Unmarshal(raw, &metadata) != nil || !imageIDPattern.MatchString(metadata.ConfigDigest) {
+	if json.Unmarshal(raw, &metadata) != nil || (metadata.ConfigDigest != "" && !imageIDPattern.MatchString(metadata.ConfigDigest)) {
 		return "", message, "internal", fmt.Errorf("BuildKit returned invalid image metadata")
 	}
-	image = metadata.ConfigDigest
 	if m.inspect == nil {
 		return "", message, "internal", fmt.Errorf("Docker image inspection is unavailable")
 	}
-	img, err := m.inspect(ctx, image)
+	img, err := m.resolveImage(ctx, image, metadata.ConfigDigest, r.ImageTag)
 	if err != nil {
 		return "", message, "internal", fmt.Errorf("inspect built image: %w", err)
-	}
-	if img == nil || img.ID != image {
-		return "", message, "internal", fmt.Errorf("built image identity does not match")
 	}
 	for key, value := range labels {
 		if img.Config.Labels[key] != value {
 			return "", message, "internal", fmt.Errorf("built image ownership labels do not match")
 		}
 	}
-	return image, message, "", nil
+	return img.ID, message, "", nil
+}
+
+// Exporters differ in whether iid is a config or manifest digest and whether
+// they emit config metadata. A tag lookup is safe only when its immutable
+// descriptor/repository digest proves it is the exact build result.
+func (m *Manager) resolveImage(ctx context.Context, iid, configDigest, tag string) (*docker.ImageInspect, error) {
+	expected := iid
+	if configDigest != "" {
+		expected = configDigest
+	}
+	img, err := m.inspect(ctx, expected)
+	byTag := false
+	if docker.IsNotFound(err) {
+		img, err = m.inspect(ctx, tag)
+		byTag = true
+	}
+	if err != nil {
+		return nil, err
+	}
+	if img == nil || !imageIDPattern.MatchString(img.ID) {
+		return nil, fmt.Errorf("built image identity does not match")
+	}
+	if configDigest != "" && img.ID != configDigest {
+		return nil, fmt.Errorf("built image identity does not match: expected config %s, loaded %s", configDigest, img.ID)
+	}
+	match := img.ID == expected
+	if byTag {
+		match = match || img.Descriptor.Digest == iid
+		for _, digest := range img.RepoDigests {
+			match = match || strings.HasSuffix(digest, "@"+iid)
+		}
+	}
+	if !match {
+		return nil, fmt.Errorf("built image identity does not match")
+	}
+	return img, nil
 }
 
 func sortedKeys(values map[string]string) []string {
