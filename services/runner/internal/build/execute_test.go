@@ -211,6 +211,9 @@ printf '%%s\n' '%s' > "$iid"
 	if !strings.Contains(fmt.Sprint(s.Logs), "[REDACTED]") {
 		t.Fatal("secret fixture did not reach log redactor")
 	}
+	if !strings.Contains(fmt.Sprint(s.Logs), "Built image") {
+		t.Fatal("successful build completion is missing from the deployment log")
+	}
 	args, err := os.ReadFile(record)
 	if err != nil {
 		t.Fatal(err)

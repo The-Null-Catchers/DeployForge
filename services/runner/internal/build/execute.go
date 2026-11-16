@@ -147,6 +147,7 @@ func (m *Manager) execute(ctx context.Context, op *operation, r protocol.BuildRe
 			return "", message, "internal", fmt.Errorf("built image ownership labels do not match")
 		}
 	}
+	op.addLog("system", redact.All("Built image "+img.ID, redact.ExactNeedles(secrets)))
 	return img.ID, message, "", nil
 }
 
