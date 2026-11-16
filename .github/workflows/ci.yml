@@ -69,6 +69,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @deployforge/contracts build
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/runner/go.mod
+          cache: false
       - run: pnpm --filter @deployforge/api db:generate
       - run: pnpm test:integration
 

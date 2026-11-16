@@ -10,6 +10,7 @@ Short, append-only log so work can resume across sessions. Newest first.
 | Go runner | Build blocked: imported `internal/build` package is absent from Git. Restore original source before release. |
 | Deployment/rollback/recovery | Historical acceptance report records 14/14 checks on 2026-09-29; not reproduced from this checkout. |
 | CI | Added required TypeScript/unit/build, PostgreSQL/Redis integration, Go/race/Docker, acceptance and browser jobs. |
+| Initial CI | JavaScript checks passed; 63 API integration tests passed. Runner-auth integration is blocked by the missing Go package. Bake also exposed an external `/dev/null` secret path, replaced with an empty file inside the build context. |
 | Source tracking | Root-scoped `/build/` ignore rule prevents nested build-source packages being silently ignored. |
 | Public DNS/HTTPS and real GitHub App | Not verified by the local fixture. |
 | Flutter | Not present. |
