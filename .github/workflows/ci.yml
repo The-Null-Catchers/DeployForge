@@ -124,7 +124,8 @@ jobs:
 
   browser:
     name: Browser deployment workflows
-    runs-on: ubuntu-latest
+    # Keep the pinned Playwright browser compatible with the runner OS.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       E2E_BASE_URL: http://deploy.acceptance.localhost:18080
