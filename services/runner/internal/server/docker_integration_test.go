@@ -88,9 +88,16 @@ func (h *harness) call(method, path string, body any, out any) int {
 	h.t.Helper()
 	var raw []byte
 	if body != nil {
-		raw, _ = json.Marshal(body)
+		var err error
+		raw, err = json.Marshal(body)
+		if err != nil {
+			h.t.Fatal(err)
+		}
 	}
-	req, _ := http.NewRequest(method, h.srv.URL+path, bytes.NewReader(raw))
+	req, err := http.NewRequest(method, h.srv.URL+path, bytes.NewReader(raw))
+	if err != nil {
+		h.t.Fatal(err)
+	}
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
 	n := nonce()
 	req.Header.Set(protocol.HeaderProtocol, "1")
@@ -335,9 +342,13 @@ func TestOwnershipEnforced(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	// A container not created by DeployForge.
-	out, err := exec.Command("docker", "run", "-d", "--rm", "alpine:3.20", "sleep", "60").CombinedOutput()
+	// Pull progress is stderr; only stdout contains the container ID.
+	cmd := exec.Command("docker", "run", "-d", "--rm", "alpine:3.20", "sleep", "60")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	if err != nil {
-		t.Skipf("cannot start foreign container: %s", out)
+		t.Fatalf("cannot start foreign container: %v: %s", err, &stderr)
 	}
 	foreign := strings.TrimSpace(string(out))
 	defer h.docker.RemoveContainer(ctx, foreign)
@@ -379,11 +390,14 @@ func TestOwnershipEnforced(t *testing.T) {
 func TestOtherInstanceIsNotOwned(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
-	out, err := exec.Command("docker", "run", "-d", "--rm",
+	cmd := exec.Command("docker", "run", "-d", "--rm",
 		"--label", "io.deployforge.managed=true", "--label", "io.deployforge.role=app", "--label", "io.deployforge.instance=someone-else",
-		"alpine:3.20", "sleep", "60").CombinedOutput()
+		"alpine:3.20", "sleep", "60")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	if err != nil {
-		t.Skipf("cannot start container: %s", out)
+		t.Fatalf("cannot start container: %v: %s", err, &stderr)
 	}
 	other := strings.TrimSpace(string(out))
 	defer h.docker.RemoveContainer(ctx, other)

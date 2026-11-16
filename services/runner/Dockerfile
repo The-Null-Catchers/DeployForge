@@ -23,7 +23,10 @@ ENTRYPOINT ["/usr/local/bin/runner"]
 FROM alpine:3.22 AS gitfixture
 RUN --mount=type=secret,id=build_ca,required=false \
     if [ -s /run/secrets/build_ca ]; then export SSL_CERT_FILE=/run/secrets/build_ca; fi; \
-    apk add --no-cache git git-daemon
+    apk add --no-cache git git-daemon \
+ && git config --system --add safe.directory /repos/demo/sample-app.git
+# The read-only fixture bind mount belongs to the host's CI user, while this
+# test container runs as root. Trust only its known fixture repository.
 COPY --from=build /out/gitfixture /usr/local/bin/gitfixture
 ENTRYPOINT ["/usr/local/bin/gitfixture"]
 
