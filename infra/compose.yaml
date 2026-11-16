@@ -215,7 +215,7 @@ networks:
 secrets:
   # Optional extra CA bundle for builds behind a TLS-intercepting proxy.
   build_ca:
-    file: ${DEPLOYFORGE_BUILD_CA:-/dev/null}
+    file: ${DEPLOYFORGE_BUILD_CA:-./build-ca.empty}
 
 volumes:
   pgdata:

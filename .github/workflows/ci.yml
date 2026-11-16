@@ -1,0 +1,171 @@
+name: DeployForge CI
+
+on:
+  push:
+    branches: [main, claude/deployforge-platform-hppvk5]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deployforge-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  javascript:
+    name: TypeScript, unit tests, and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @deployforge/contracts build
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+
+  integration:
+    name: PostgreSQL and Redis integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: deployforge
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: deployforge_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U deployforge -d deployforge_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql://deployforge:ci-only-password@localhost:5432/deployforge_test
+      TEST_REDIS_URL: redis://localhost:6379/5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @deployforge/contracts build
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/runner/go.mod
+          cache: false
+      - run: pnpm --filter @deployforge/api db:generate
+      - run: pnpm test:integration
+
+  runner:
+    name: Go runner build and race tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: services/runner
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/runner/go.mod
+          cache: false
+      - run: go vet ./...
+      - run: go test -race ./...
+      - run: go build ./...
+      - uses: docker/setup-buildx-action@v3
+      - run: go test -tags docker -timeout 15m ./internal/server/
+
+  acceptance:
+    name: Real Docker acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - run: |
+          rm -f docs/acceptance-report.md
+          bash scripts/acceptance.sh all
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deployforge-acceptance-report
+          path: docs/acceptance-report.md
+          if-no-files-found: ignore
+      - name: Inspect remaining fixture image identities
+        if: failure()
+        run: |
+          docker image ls -q --filter label=io.deployforge.instance=acceptance | sort -u | xargs -r docker image inspect --format '{{.Id}} {{json .RepoTags}} {{json .RepoDigests}} {{json .Descriptor}}'
+      - if: always()
+        run: bash scripts/acceptance.sh down
+
+  browser:
+    name: Browser deployment workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      E2E_BASE_URL: http://deploy.acceptance.localhost:18080
+      E2E_PROXY_URL: http://127.0.0.1:18080
+      E2E_REPO_URL: http://git-fixture:8080/demo/sample-app
+      E2E_APPS_DOMAIN: acceptance.localhost
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - uses: docker/setup-buildx-action@v3
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @deployforge/web exec playwright install --with-deps chromium
+      - run: bash scripts/acceptance.sh up
+      - name: Configure isolated browser fixture
+        run: |
+          echo '127.0.0.1 deploy.acceptance.localhost' | sudo tee -a /etc/hosts
+          python3 - <<'PYTHON'
+          import json, os
+          from pathlib import Path
+          values = dict(line.split('=', 1) for line in Path('.tmp/acceptance/.env').read_text().splitlines() if line and not line.startswith('#'))
+          token = values['SETUP_TOKEN']
+          print('::add-mask::' + token)
+          shas = json.loads(Path('.tmp/acceptance/fixture/shas.json').read_text())
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write('E2E_SETUP_TOKEN=' + token + '\n')
+              output.write('E2E_SHAS=' + json.dumps(shas) + '\n')
+          PYTHON
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: deployforge-browser-failures
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          if-no-files-found: ignore
+      - if: always()
+        run: bash scripts/acceptance.sh down

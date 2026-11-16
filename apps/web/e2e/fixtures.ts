@@ -5,6 +5,7 @@ export const OWNER = {
   email: process.env.E2E_EMAIL ?? 'owner@example.com',
   password: process.env.E2E_PASSWORD ?? 'correct horse battery',
 };
+export const APPS_DOMAIN = process.env.E2E_APPS_DOMAIN ?? 'localhost';
 export const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:5173';
 /** Public repository URL of the hermetic git fixture (see scripts/make-fixture-repo.sh). */
 export const FIXTURE_REPO = process.env.E2E_REPO_URL ?? 'http://127.0.0.1:8089/demo/sample-app';

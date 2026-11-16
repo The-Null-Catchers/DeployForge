@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import {
+  APPS_DOMAIN,
   fixtureShas,
   FIXTURE_REPO,
   login,
@@ -13,7 +14,7 @@ test.describe('signed out', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
   test('login rejects wrong credentials and accepts correct ones', async ({ page }) => {
     await page.goto('/login');
-    await page.getByLabel('Email').fill('owner@example.com');
+    await page.getByLabel('Email').fill(OWNER.email);
     await page.getByLabel('Password').fill('definitely wrong password');
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page.getByText('Invalid email or password')).toBeVisible();
@@ -69,10 +70,10 @@ test('create an application with variables, deploy it, and inspect status and lo
   await expect(page.getByText('Traffic now routed to deployment #1')).toBeVisible();
 
   // The application answers through the proxy.
-  const res = await viaProxy(`${slug}.localhost`, '/version');
+  const res = await viaProxy(`${slug}.${APPS_DOMAIN}`, '/version');
   expect(res.status).toBe(200);
   expect(JSON.parse(res.body).version).toBe('A');
-  const home = await viaProxy(`${slug}.localhost`, '/');
+  const home = await viaProxy(`${slug}.${APPS_DOMAIN}`, '/');
   expect(home.body).toContain('hello from e2e');
 
   // Variables tab never shows the secret value.
@@ -143,7 +144,7 @@ test('manage domain configuration', async ({ page }) => {
   ).json();
   await login(page);
   await page.goto(`/w/${workspaceId}/apps/${app.id}/domains`);
-  await expect(page.getByText(`${slug}.localhost`)).toBeVisible();
+  await expect(page.getByText(`${slug}.${APPS_DOMAIN}`)).toBeVisible();
   await page.getByLabel('Hostname').fill('not a hostname');
   await page.getByRole('button', { name: 'Add domain' }).click();
   await expect(page.getByText('Enter a fully-qualified domain name')).toBeVisible();
@@ -205,7 +206,7 @@ test('request a rollback to a retained release', async ({ page }) => {
     })
   ).json();
   expect((await waitFor(d2.id)).status).toBe('succeeded');
-  expect(JSON.parse((await viaProxy(`${slug}.localhost`, '/version')).body).version).toBe('B');
+  expect(JSON.parse((await viaProxy(`${slug}.${APPS_DOMAIN}`, '/version')).body).version).toBe('B');
 
   await login(page);
   await page.goto(`/w/${workspaceId}/apps/${app.id}/deployments`);
@@ -219,7 +220,7 @@ test('request a rollback to a retained release', async ({ page }) => {
   await expect(page.getByText(/using its retained image/)).toBeVisible();
   await expect(page.getByText('Succeeded').first()).toBeVisible({ timeout: 120_000 });
   await expect(page.getByText('Reused image').first()).toBeVisible();
-  expect(JSON.parse((await viaProxy(`${slug}.localhost`, '/version')).body).version).toBe('A');
+  expect(JSON.parse((await viaProxy(`${slug}.${APPS_DOMAIN}`, '/version')).body).version).toBe('A');
 });
 
 test('viewer role cannot change anything (UI and API)', async ({ page, browser }) => {

@@ -57,6 +57,31 @@ type Stream struct {
 
 func NewStream(secrets []string) *Stream { return &Stream{needles: Needles(secrets)} }
 
+// ExactNeedles also covers short and untrimmed secrets. BuildKit accepts arbitrary
+// secret-file contents, so builds must not silently omit values below MinLength.
+func ExactNeedles(secrets []string) []string {
+	set := map[string]bool{}
+	for _, n := range Needles(secrets) {
+		set[n] = true
+	}
+	for _, raw := range secrets {
+		for _, value := range append([]string{raw}, strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n")...) {
+			if value != "" {
+				set[value] = true
+				set[strings.ReplaceAll(url.QueryEscape(value), "+", "%20")] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(set))
+	for value := range set {
+		out = append(out, value)
+	}
+	sort.Slice(out, func(i, j int) bool { return len(out[i]) > len(out[j]) })
+	return out
+}
+
+func NewExactStream(secrets []string) *Stream { return &Stream{needles: ExactNeedles(secrets)} }
+
 func (s *Stream) Push(chunk string) string {
 	if len(s.needles) == 0 {
 		return chunk

@@ -2,19 +2,45 @@
 
 Short, append-only log so work can resume across sessions. Newest first.
 
-## Current state
+## Current state — 2026-11-16
 
-| Milestone | Status |
+| Area | Current evidence |
 | --- | --- |
-| 1. Repo, architecture decisions, local infra | done (compose, dev overlay, setup script) |
-| 2. Auth, workspaces, DB, app CRUD | implemented; tests pending |
-| 3. Real deployment path public repo → Docker → local domain | **verified manually** (see below) |
-| 4. Persistence, logs, health-gated promotion, recovery | implemented; automated tests pending |
-| 5. Immutable releases, config/env revisions, rollback | implemented; rollback verified manually |
-| 6. GitHub App + push deploys | implemented against fixture adapter; tests pending |
-| 7. Custom domains, HTTPS, hardening | implemented; public DNS/HTTPS unverified |
-| 8. Dashboard, metrics, security tests, docs | not started |
-| Mobile (Flutter) | not started |
+| API, worker, contracts and React dashboard | Source and tests are checked in; current CI results determine validation. |
+| Go runner | Reimplemented `internal/build`; local vet/race/build pass. Real Docker runner integration passes in CI; full-stack evidence is tracked in PR #1. |
+| Deployment/rollback/recovery | Historical acceptance report records 14/14 checks on 2026-09-29; not reproduced from this checkout. |
+| CI | Added required TypeScript/unit/build, PostgreSQL/Redis integration, Go/race/Docker, acceptance and browser jobs. |
+| Initial CI | JavaScript checks passed; 63 API integration tests passed. Runner-auth integration is blocked by the missing Go package. Bake also exposed an external `/dev/null` secret path, replaced with an empty file inside the build context. |
+| Source tracking | Root-scoped `/build/` ignore rule prevents nested build-source packages being silently ignored. |
+| Public DNS/HTTPS and real GitHub App | Not verified by the local fixture. |
+| Flutter | Not present. |
+
+## Next
+
+1. Run all CI jobs against the rewritten build manager and fix clean-checkout failures before merging.
+2. Validate public TLS, real GitHub integration, backup/restore and host behavior separately.
+
+The older session log below is historical and does not override the current
+checkout evidence. The acceptance report is retained with its original date.
+
+## 2026-11-16 — build package reconstruction
+
+- Added the missing Go build manager against the existing HTTP/protocol contracts.
+- BuildKit loads an image from an exact Git SHA; success requires a valid image
+  ID and matching instance/workspace/application/deployment ownership labels.
+- Requests, logs and terminal status are bounded; submission is idempotent by
+  operation and deployment identity. Deadlines include queue time.
+- Cancellation kills Git/Docker process groups; workspaces and temporary secret
+  files are cleaned on success, failure, timeout and cancellation.
+- Build secrets are passed as mode-0600 files outside the repository context;
+  streaming redaction covers split, multiline and short secret values.
+- Added race-tested concurrency, queue, cursor, path escape, secret, ownership,
+  command argument and cancellation coverage. All Go packages pass locally.
+- Fixed the container fixture's host/container Git ownership mismatch and kept
+  Docker pull progress separate from container IDs in ownership tests.
+- Read the loaded image's config digest from Buildx metadata, covering exporters
+  whose iidfile contains a manifest digest. Regression tests retain strict image
+  identity and ownership checks.
 
 ## 2026-09-29 — session 1
 
@@ -34,10 +60,3 @@ Short, append-only log so work can resume across sessions. Newest first.
 - Environment notes: Docker Hub rate-limits anonymous pulls here (429); the
   sandbox daemon was configured with `registry-mirrors: ["https://mirror.gcr.io"]`
   (host configuration, not part of the repository).
-
-## Next
-
-1. API unit + integration tests (authz, CSRF, refresh reuse, outbox, webhooks, SSE).
-2. Web dashboard.
-3. Flutter mobile app.
-4. Full-compose acceptance script, CI, documentation.
