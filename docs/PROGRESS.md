@@ -7,7 +7,7 @@ Short, append-only log so work can resume across sessions. Newest first.
 | Area | Current evidence |
 | --- | --- |
 | API, worker, contracts and React dashboard | Source and tests are checked in; current CI results determine validation. |
-| Go runner | Build blocked: imported `internal/build` package is absent from Git. Restore original source before release. |
+| Go runner | Reimplemented `internal/build`; local `go vet`, `go test -race ./...` and `go build ./...` pass. Full Docker CI pending. |
 | Deployment/rollback/recovery | Historical acceptance report records 14/14 checks on 2026-09-29; not reproduced from this checkout. |
 | CI | Added required TypeScript/unit/build, PostgreSQL/Redis integration, Go/race/Docker, acceptance and browser jobs. |
 | Initial CI | JavaScript checks passed; 63 API integration tests passed. Runner-auth integration is blocked by the missing Go package. Bake also exposed an external `/dev/null` secret path, replaced with an empty file inside the build context. |
@@ -17,12 +17,25 @@ Short, append-only log so work can resume across sessions. Newest first.
 
 ## Next
 
-1. Restore `services/runner/internal/build` from the original working source.
-2. Run all CI jobs and fix any additional clean-checkout failures before merging.
-3. Validate public TLS, real GitHub integration, backup/restore and host behavior separately.
+1. Run all CI jobs against the rewritten build manager and fix clean-checkout failures before merging.
+2. Validate public TLS, real GitHub integration, backup/restore and host behavior separately.
 
 The older session log below is historical and does not override the current
-clean-checkout blocker. The acceptance report is retained with its original date.
+checkout evidence. The acceptance report is retained with its original date.
+
+## 2026-11-16 — build package reconstruction
+
+- Added the missing Go build manager against the existing HTTP/protocol contracts.
+- BuildKit loads an image from an exact Git SHA; success requires a valid image
+  ID and matching instance/workspace/application/deployment ownership labels.
+- Requests, logs and terminal status are bounded; submission is idempotent by
+  operation and deployment identity. Deadlines include queue time.
+- Cancellation kills Git/Docker process groups; workspaces and temporary secret
+  files are cleaned on success, failure, timeout and cancellation.
+- Build secrets are passed as mode-0600 files outside the repository context;
+  streaming redaction covers split, multiline and short secret values.
+- Added race-tested concurrency, queue, cursor, path escape, secret, ownership,
+  command argument and cancellation coverage. All Go packages pass locally.
 
 ## 2026-09-29 — session 1
 

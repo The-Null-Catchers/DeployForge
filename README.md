@@ -8,17 +8,17 @@ are represented in persistent state.
 
 ## Current checkout status
 
-**Build blocked: the imported Go package `services/runner/internal/build` is
-absent from Git.** Both the runner command and HTTP server depend on it. A clean
-checkout cannot build the runner or complete the Docker/browser acceptance
-suites until the original package is restored. The former unanchored `build/`
-ignore rule also hid directories with that name inside the source tree; it is
-now limited to the repository root.
+The missing Go package `services/runner/internal/build` has been reimplemented.
+It builds exact Git commits with BuildKit, bounds concurrent work and retained
+logs, supports cancellation and deadlines, and checks image ownership before
+returning success. See [build manager behavior](services/runner/internal/build/README.md).
+Go vet, race tests and compilation pass locally. Full Docker and browser results
+are verified by the required CI jobs before merging.
 
 The checked-in [acceptance report](docs/acceptance-report.md) records 14/14 checks
 from 29 September 2026. It is historical evidence, not proof that the current
-checkout can reproduce those results. The new CI keeps Go and full-stack checks
-mandatory so the missing source remains visible. See [progress](docs/PROGRESS.md).
+checkout can reproduce those results. CI generates a fresh report and keeps Go
+and full-stack checks mandatory. See [progress](docs/PROGRESS.md).
 
 ## Prerequisites
 
@@ -35,7 +35,7 @@ private. The API and worker do not mount that socket.
 
 ## Development
 
-Restore the missing Go source before starting the runner. Then, from the root:
+From the repository root:
 
 ```sh
 corepack enable
@@ -106,12 +106,11 @@ and pushes to `main` or the current default development branch. It checks:
 - The real-Docker acceptance scenario and browser deployment workflows.
 
 CI uploads the generated acceptance report and browser failure artifacts;
-it does not publish `.env` files. Go/full-stack jobs are expected to fail until
-the missing build package is restored; they are not skipped or allowed to fail.
+it does not publish `.env` files. Required jobs are not skipped or allowed to fail.
 
 ## Single-server installation
 
-After restoring the source and passing CI on the target host:
+After passing CI and verifying the target host:
 
 ```sh
 node scripts/setup.mjs --domain deploy.example.com --apps-domain apps.example.com --email ops@example.com
