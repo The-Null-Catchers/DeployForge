@@ -6,9 +6,13 @@ context and Dockerfile relative to the repository root (including symlink
 checks), and invokes `docker buildx build --load` without a shell. Dockerfile
 paths may be outside a nested context, but cannot leave the repository.
 
-Success requires a `sha256` image ID from BuildKit, a matching Docker inspection
+Success requires a `sha256` config digest from BuildKit metadata, a matching Docker inspection
 and all ownership labels. Clone, configuration, build, timeout, cancellation and
 internal failures retain distinct protocol classifications.
+
+The config digest identifies the local loaded image. The separate `--iidfile`
+may contain a manifest digest with some Buildx exporters, so it is validated
+but is not used as the Docker Engine lookup key.
 
 ## Limits and lifecycle
 

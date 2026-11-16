@@ -7,7 +7,7 @@ Short, append-only log so work can resume across sessions. Newest first.
 | Area | Current evidence |
 | --- | --- |
 | API, worker, contracts and React dashboard | Source and tests are checked in; current CI results determine validation. |
-| Go runner | Reimplemented `internal/build`; local `go vet`, `go test -race ./...` and `go build ./...` pass. Full Docker CI pending. |
+| Go runner | Reimplemented `internal/build`; local vet/race/build pass. Real Docker runner integration passes in CI; full-stack evidence is tracked in PR #1. |
 | Deployment/rollback/recovery | Historical acceptance report records 14/14 checks on 2026-09-29; not reproduced from this checkout. |
 | CI | Added required TypeScript/unit/build, PostgreSQL/Redis integration, Go/race/Docker, acceptance and browser jobs. |
 | Initial CI | JavaScript checks passed; 63 API integration tests passed. Runner-auth integration is blocked by the missing Go package. Bake also exposed an external `/dev/null` secret path, replaced with an empty file inside the build context. |
@@ -36,6 +36,11 @@ checkout evidence. The acceptance report is retained with its original date.
   streaming redaction covers split, multiline and short secret values.
 - Added race-tested concurrency, queue, cursor, path escape, secret, ownership,
   command argument and cancellation coverage. All Go packages pass locally.
+- Fixed the container fixture's host/container Git ownership mismatch and kept
+  Docker pull progress separate from container IDs in ownership tests.
+- Read the loaded image's config digest from Buildx metadata, covering exporters
+  whose iidfile contains a manifest digest. Regression tests retain strict image
+  identity and ownership checks.
 
 ## 2026-09-29 — session 1
 

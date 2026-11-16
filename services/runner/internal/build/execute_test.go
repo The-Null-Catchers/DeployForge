@@ -22,11 +22,58 @@ const testImage = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef012345
 func fakeDocker(t *testing.T, body string) string {
 	t.Helper()
 	bin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\nset -eu\n"+body), 0700); err != nil {
+	metadata := fmt.Sprintf(`previous=''
+for arg in "$@"; do
+  if [ "$previous" = --metadata-file ]; then
+    printf '{"containerimage.config.digest":"%s"}\n' > "$arg"
+  fi
+  previous="$arg"
+done
+`, testImage)
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\nset -eu\n"+metadata+body), 0700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
 	return bin
+}
+
+func TestBuildUsesConfigDigestAndVerifiesIdentity(t *testing.T) {
+	for _, scenario := range []string{"manifest iid", "invalid metadata", "mismatched inspection"} {
+		t.Run(scenario, func(t *testing.T) {
+			body := fmt.Sprintf(`previous=''
+for arg in "$@"; do
+  if [ "$previous" = --iidfile ]; then printf 'sha256:%s\n' > "$arg"; fi
+`, strings.Repeat("b", 64))
+			if scenario == "invalid metadata" {
+				body += "  if [ \"$previous\" = --metadata-file ]; then printf '{}' > \"$arg\"; fi\n"
+			}
+			body += "  previous=\"$arg\"\ndone\n"
+			fakeDocker(t, body)
+			m := manager(t, 1)
+			m.clone = fixtureClone
+			m.inspect = func(ctx context.Context, id string) (*docker.ImageInspect, error) {
+				if id != testImage {
+					t.Errorf("inspected manifest instead of config digest: %s", id)
+				}
+				img, err := inspectFixture(ctx, id)
+				if scenario == "mismatched inspection" {
+					img.ID = "sha256:" + strings.Repeat("c", 64)
+				}
+				return img, err
+			}
+			if _, err := m.Submit(request()); err != nil {
+				t.Fatal(err)
+			}
+			s := waitStatus(t, m, request().OperationID, terminal)
+			if scenario == "manifest iid" {
+				if s.State != "succeeded" || s.ImageID != testImage {
+					t.Fatalf("config digest not used: %+v", s)
+				}
+			} else if s.State != "failed" || s.FailureKind != "internal" || s.ImageID != "" {
+				t.Fatalf("invalid image identity accepted: %+v", s)
+			}
+		})
+	}
 }
 
 func fixtureClone(_ context.Context, dir, _, _ string, _ *gitops.Auth, _ io.Writer) error {

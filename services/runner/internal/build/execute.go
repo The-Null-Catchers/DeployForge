@@ -2,6 +2,7 @@ package build
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -66,7 +67,8 @@ func (m *Manager) execute(ctx context.Context, op *operation, r protocol.BuildRe
 		}
 	}
 	iidFile := filepath.Join(workspace, "image-id")
-	args := []string{"buildx", "build", "--load", "--progress=plain", "--provenance=false", "--iidfile", iidFile, "--file", dockerfile, "--tag", r.ImageTag}
+	metadataFile := filepath.Join(workspace, "image-metadata.json")
+	args := []string{"buildx", "build", "--load", "--progress=plain", "--provenance=false", "--iidfile", iidFile, "--metadata-file", metadataFile, "--file", dockerfile, "--tag", r.ImageTag}
 	labels := map[string]string{
 		protocol.LabelManaged: "true", protocol.LabelInstance: m.cfg.Instance,
 		protocol.LabelWorkspace: r.WorkspaceID, protocol.LabelApplication: r.ApplicationID,
@@ -119,6 +121,19 @@ func (m *Manager) execute(ctx context.Context, op *operation, r protocol.BuildRe
 	if !imageIDPattern.MatchString(image) {
 		return "", message, "internal", fmt.Errorf("BuildKit returned an invalid image ID")
 	}
+	// Some Buildx exporters put the manifest digest in --iidfile. Docker's
+	// local image API identifies the loaded image by its config digest instead.
+	raw, err = os.ReadFile(metadataFile)
+	if err != nil {
+		return "", message, "internal", fmt.Errorf("BuildKit did not return image metadata: %w", err)
+	}
+	var metadata struct {
+		ConfigDigest string `json:"containerimage.config.digest"`
+	}
+	if json.Unmarshal(raw, &metadata) != nil || !imageIDPattern.MatchString(metadata.ConfigDigest) {
+		return "", message, "internal", fmt.Errorf("BuildKit returned invalid image metadata")
+	}
+	image = metadata.ConfigDigest
 	if m.inspect == nil {
 		return "", message, "internal", fmt.Errorf("Docker image inspection is unavailable")
 	}
