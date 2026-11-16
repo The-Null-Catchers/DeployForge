@@ -129,15 +129,16 @@ func (m *Manager) execute(ctx context.Context, op *operation, r protocol.BuildRe
 		return "", message, "internal", fmt.Errorf("BuildKit did not return image metadata: %w", err)
 	}
 	var metadata struct {
-		ConfigDigest string `json:"containerimage.config.digest"`
+		ConfigDigest   string `json:"containerimage.config.digest"`
+		ManifestDigest string `json:"containerimage.digest"`
 	}
-	if json.Unmarshal(raw, &metadata) != nil || (metadata.ConfigDigest != "" && !imageIDPattern.MatchString(metadata.ConfigDigest)) {
+	if json.Unmarshal(raw, &metadata) != nil || (metadata.ConfigDigest != "" && !imageIDPattern.MatchString(metadata.ConfigDigest)) || (metadata.ManifestDigest != "" && !imageIDPattern.MatchString(metadata.ManifestDigest)) {
 		return "", message, "internal", fmt.Errorf("BuildKit returned invalid image metadata")
 	}
 	if m.inspect == nil {
 		return "", message, "internal", fmt.Errorf("Docker image inspection is unavailable")
 	}
-	img, err := m.resolveImage(ctx, image, metadata.ConfigDigest, r.ImageTag)
+	img, err := m.resolveImage(ctx, image, metadata.ConfigDigest, metadata.ManifestDigest, r.ImageTag)
 	if err != nil {
 		return "", message, "internal", fmt.Errorf("inspect built image: %w", err)
 	}
@@ -152,12 +153,15 @@ func (m *Manager) execute(ctx context.Context, op *operation, r protocol.BuildRe
 // Exporters differ in whether iid is a config or manifest digest and whether
 // they emit config metadata. A tag lookup is safe only when its immutable
 // descriptor/repository digest proves it is the exact build result.
-func (m *Manager) resolveImage(ctx context.Context, iid, configDigest, tag string) (*docker.ImageInspect, error) {
+func (m *Manager) resolveImage(ctx context.Context, iid, configDigest, manifestDigest, tag string) (*docker.ImageInspect, error) {
 	expected := iid
 	if configDigest != "" {
 		expected = configDigest
 	}
 	img, err := m.inspect(ctx, expected)
+	if docker.IsNotFound(err) && manifestDigest != "" && manifestDigest != expected {
+		img, err = m.inspect(ctx, manifestDigest)
+	}
 	byTag := false
 	if docker.IsNotFound(err) {
 		img, err = m.inspect(ctx, tag)
@@ -171,15 +175,15 @@ func (m *Manager) resolveImage(ctx context.Context, iid, configDigest, tag strin
 	}
 	// Engine image stores may expose either the config ID or the manifest ID.
 	// Both must come from this build; never accept a tag without digest proof.
-	match := img.ID == expected || img.ID == iid
+	match := img.ID == expected || img.ID == iid || (manifestDigest != "" && img.ID == manifestDigest)
 	if byTag {
-		match = match || img.Descriptor.Digest == iid
+		match = match || img.Descriptor.Digest == iid || (manifestDigest != "" && img.Descriptor.Digest == manifestDigest)
 		for _, digest := range img.RepoDigests {
-			match = match || strings.HasSuffix(digest, "@"+iid)
+			match = match || strings.HasSuffix(digest, "@"+iid) || (manifestDigest != "" && strings.HasSuffix(digest, "@"+manifestDigest))
 		}
 	}
 	if !match {
-		return nil, fmt.Errorf("built image identity does not match: iid %s, config %s, loaded %s, descriptor %s", iid, configDigest, img.ID, img.Descriptor.Digest)
+		return nil, fmt.Errorf("built image identity does not match: iid %s, config %s, manifest %s, loaded %s, descriptor %s", iid, configDigest, manifestDigest, img.ID, img.Descriptor.Digest)
 	}
 	return img, nil
 }

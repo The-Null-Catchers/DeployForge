@@ -38,7 +38,7 @@ done
 }
 
 func TestBuildUsesConfigDigestAndVerifiesIdentity(t *testing.T) {
-	for _, scenario := range []string{"manifest iid", "invalid metadata", "mismatched inspection"} {
+	for _, scenario := range []string{"manifest iid", "manifest metadata", "invalid metadata", "mismatched inspection"} {
 		t.Run(scenario, func(t *testing.T) {
 			body := fmt.Sprintf(`previous=''
 for arg in "$@"; do
@@ -47,11 +47,24 @@ for arg in "$@"; do
 			if scenario == "invalid metadata" {
 				body += "  if [ \"$previous\" = --metadata-file ]; then printf '{\"containerimage.config.digest\":\"bad\"}' > \"$arg\"; fi\n"
 			}
+			manifest := "sha256:" + strings.Repeat("b", 64)
+			if scenario == "manifest metadata" {
+				body += fmt.Sprintf("  if [ \"$previous\" = --metadata-file ]; then printf '{\"containerimage.config.digest\":\"%s\",\"containerimage.digest\":\"%s\"}' > \"$arg\"; fi\n", testImage, manifest)
+			}
 			body += "  previous=\"$arg\"\ndone\n"
 			fakeDocker(t, body)
 			m := manager(t, 1)
 			m.clone = fixtureClone
 			m.inspect = func(ctx context.Context, id string) (*docker.ImageInspect, error) {
+				if scenario == "manifest metadata" {
+					if id == testImage {
+						return nil, &docker.APIError{Status: 404, Message: "config ID not found"}
+					}
+					if id != manifest {
+						t.Errorf("expected manifest digest lookup, got %s", id)
+					}
+					return inspectFixture(ctx, manifest)
+				}
 				if id != testImage {
 					t.Errorf("inspected manifest instead of config digest: %s", id)
 				}
@@ -65,8 +78,12 @@ for arg in "$@"; do
 				t.Fatal(err)
 			}
 			s := waitStatus(t, m, request().OperationID, terminal)
-			if scenario == "manifest iid" {
-				if s.State != "succeeded" || s.ImageID != testImage {
+			if scenario == "manifest iid" || scenario == "manifest metadata" {
+				wantID := testImage
+				if scenario == "manifest metadata" {
+					wantID = manifest
+				}
+				if s.State != "succeeded" || s.ImageID != wantID {
 					t.Fatalf("config digest not used: %+v", s)
 				}
 			} else if s.State != "failed" || s.FailureKind != "internal" || s.ImageID != "" {
@@ -78,17 +95,24 @@ for arg in "$@"; do
 
 func TestImageResolutionAcrossExporters(t *testing.T) {
 	manifest := "sha256:" + strings.Repeat("b", 64)
-	for _, scenario := range []string{"iid only", "manifest image ID", "descriptor", "repository digest", "mismatched tag", "wrong config", "unavailable"} {
+	for _, scenario := range []string{"iid only", "manifest image ID", "manifest metadata", "descriptor", "repository digest", "mismatched tag", "wrong config", "unavailable"} {
 		t.Run(scenario, func(t *testing.T) {
 			m := manager(t, 1)
 			iid, config := manifest, ""
+			manifestMetadata := ""
 			if scenario == "iid only" {
 				iid = testImage
 			}
 			if scenario == "wrong config" || scenario == "manifest image ID" {
 				config = "sha256:" + strings.Repeat("c", 64)
 			}
+			if scenario == "manifest metadata" {
+				iid, config, manifestMetadata = testImage, testImage, manifest
+			}
 			m.inspect = func(ctx context.Context, ref string) (*docker.ImageInspect, error) {
+				if scenario == "manifest metadata" && ref == manifest {
+					return inspectFixture(ctx, manifest)
+				}
 				if scenario == "unavailable" || (ref != request().ImageTag && scenario != "iid only") {
 					return nil, &docker.APIError{Status: 404, Message: "not found"}
 				}
@@ -104,12 +128,12 @@ func TestImageResolutionAcrossExporters(t *testing.T) {
 				}
 				return img, nil
 			}
-			img, err := m.resolveImage(context.Background(), iid, config, request().ImageTag)
+			img, err := m.resolveImage(context.Background(), iid, config, manifestMetadata, request().ImageTag)
 			wantID := testImage
-			if scenario == "manifest image ID" {
+			if scenario == "manifest image ID" || scenario == "manifest metadata" {
 				wantID = manifest
 			}
-			wantOK := scenario == "iid only" || scenario == "manifest image ID" || scenario == "descriptor" || scenario == "repository digest"
+			wantOK := scenario == "iid only" || scenario == "manifest image ID" || scenario == "manifest metadata" || scenario == "descriptor" || scenario == "repository digest"
 			if wantOK && (err != nil || img.ID != wantID) {
 				t.Fatalf("exporter not supported: %+v %v", img, err)
 			}
