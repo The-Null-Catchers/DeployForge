@@ -1,0 +1,17 @@
+{
+  "repository": "The-Null-Catchers/DeployForge",
+  "defaultBranch": "claude/deployforge-platform-hppvk5",
+  "baseSHA": "7699a7ab2e0f14d0518fb36a3da445bed5e624e2",
+  "backupTag": "cleanup-backup-2026-11-16",
+  "delete": [
+    {
+      "name": "ci/verification-and-runbook-20261116",
+      "sha": "43c5697a74c592aa097c016d98d08b92212cde6e",
+      "reason": "tree-identical"
+    }
+  ],
+  "status": "APPROVED BY USER: archive then delete audited branches using temporary contents:write workflow",
+  "archiveParents": [
+    "43c5697a74c592aa097c016d98d08b92212cde6e"
+  ]
+}
