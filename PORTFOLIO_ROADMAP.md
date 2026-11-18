@@ -10,7 +10,7 @@
 
 **الموجود الموثق:** control plane وrunner Go مُعاد تنفيذه، build لcommit محدد، health-gated activation وrollback. CI الحالي اجتاز الفحوص المسترجعة، بينما acceptance-report قديم ووثيقة PROGRESS تتضمن عوائق تاريخية؛ يلزم توحيدها مع الأدلة الجديدة.
 
-**P0 — نسخة العرض:** خذ تقرير acceptance حديثًا من الإصدار الحالي واربطه بـSHA وCI. سجل أربع خطوات: إصدار A، إصدار B، إصدار يفشل health ويبقى B، ثم rollback إلى A دون build جديد. حدّث status بتاريخ حديث؛ احتفظ بالتقارير السابقة كتاريخ فقط.
+**P0 — أول مسار قابل للعرض** أعد اختبار قبول Docker على الإصدار الحالي وصوّر الترقية والفشل والاسترجاع.
 
 **P1 — تشغيل حقيقي محدود:** تحقق من GitHub App وDNS/TLS على بيئة اختبار إذا كانت متاحة؛ إن لم تتوفر فاعرض fixture المحلي بوضوح. أضف تمرين backup/restore للبيانات ومفاتيح التشفير وإعادة تشغيل runner أثناء build، مع logs لا تسرب secrets.
 
@@ -19,6 +19,14 @@
 **معيار الإنجاز:** لا تفعيل قبل نجاح health، rollback يستخدم صورة مملوكة محفوظة، وإلغاء build ينهي العمليات وينظف العمل المؤقت.
 
 **الديمو:** commit ناجح → نشر حي → commit معطوب → رفضه → rollback. **الأدلة:** [المستودع والفرع الافتراضي الحالي](https://github.com/The-Null-Catchers/DeployForge)، [Progress](https://github.com/The-Null-Catchers/DeployForge/blob/claude/deployforge-platform-hppvk5/docs/PROGRESS.md).
+
+## الدفعة التالية
+
+يسجّل [تقرير القبول التاريخي](docs/acceptance-report.md) 14 فحصًا ناجحًا في 29 سبتمبر 2026.
+
+1. [ ] شغّل القبول على بيئة Docker جديدة وسجّل SHA وإصدارات Docker وCompose والنتائج.
+2. [ ] اعرض A ثم B ثم إصدارًا يعيد HTTP 503. ينجح السيناريو عند بقاء B، ثم العودة إلى معرّف صورة A دون بناء صورة جديدة.
+3. [ ] اربط النتيجة واللقطات من [PROGRESS](docs/PROGRESS.md) واذكر بيئة التحقق الفعلية.
 
 ## بوابة قبول نسخة البورتفيليو
 
