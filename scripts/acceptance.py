@@ -348,13 +348,21 @@ def _worker_crash():
 def _reconcile_missing():
     expected = version(HOST)
     expect(expected in ("A", "B"), f"app must be serving before this check (got {expected})")
-    for c in app_containers(APP()):
+    previous_containers = set(app_containers(APP()))
+    expect(previous_containers, "expected a running container before deletion")
+    for c in previous_containers:
         docker("rm", "-f", c)
     end = time.time() + 120
-    while time.time() < end and version(HOST) != expected:
+    restored_containers: set[str] = set()
+    while time.time() < end:
+        restored_containers = set(app_containers(APP()))
+        if restored_containers and restored_containers.isdisjoint(previous_containers) and version(HOST) == expected:
+            break
         time.sleep(3)
+    expect(restored_containers, "reconciler did not recreate the app container")
+    expect(restored_containers.isdisjoint(previous_containers), "expected a new container identity")
     expect(version(HOST) == expected, f"service restored (got {version(HOST)})")
-    return f"restored {expected}"
+    return f"restored {expected} with a new container"
 
 
 @check("12. Restart all DeployForge services; app stays available and state reconciles")
