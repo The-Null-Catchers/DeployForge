@@ -417,11 +417,25 @@ def _delete():
 
 def report() -> None:
     passed = sum(1 for r in results if r[1])
+    # CI checks out the exact SHA being tested; include it in generated evidence.
+    # git is also available in a clean local checkout, but never claim an
+    # unknown revision if the acceptance fixture was copied without .git.
+    revision = subprocess.run(
+        ["git", "-C", ROOT, "rev-parse", "HEAD"],
+        capture_output=True, text=True, check=False,
+    )
+    commit_sha = revision.stdout.strip() if revision.returncode == 0 else "unknown (no git checkout)"
+    compose_version = subprocess.run(
+        ["docker", "compose", "version", "--short"],
+        capture_output=True, text=True, check=False,
+    )
+    compose_label = compose_version.stdout.strip() if compose_version.returncode == 0 else "unknown"
     lines = [
         "# Acceptance report (real Docker)",
         "",
         f"Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} by `scripts/acceptance.sh`.",
-        f"Docker {docker('version', '-f', '{{.Server.Version}}')}, Compose project `{PROJECT}`, TLS mode off (local domains).",
+        f"Repository revision: `{commit_sha}`.",
+        f"Docker {docker('version', '-f', '{{.Server.Version}}')}, Compose {compose_label}, project `{PROJECT}`, TLS mode off (local domains).",
         "",
         f"**{passed}/{len(results)} checks passed.**",
         "",
