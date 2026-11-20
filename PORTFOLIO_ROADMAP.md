@@ -22,11 +22,13 @@ This roadmap applies to this repository and follows the shared Null Catchers por
 
 ## Next milestones
 
-The [historical acceptance report](docs/acceptance-report.md) records 14 passing checks on September 29, 2026.
+The [historical acceptance report](docs/acceptance-report.md) records 14 passing checks on September 29, 2026. A fresh clean-run verification was completed on November 19, 2026 at commit `fe82f204df3dec9034de6f379b89a946a7f2705d`: [CI run 44541477785](https://github.com/The-Null-Catchers/DeployForge/actions/runs/44541477785) passed all **14/14 Real Docker acceptance checks**. The [report artifact](https://github.com/The-Null-Catchers/DeployForge/actions/runs/44541477785/artifacts/14538962457) records the revision and Docker/Compose versions; [issue #5](https://github.com/The-Null-Catchers/DeployForge/issues/5) was closed with linked evidence.
 
-1. [ ] Run acceptance in a clean Docker environment. Record the commit SHA, Docker and Compose versions, and results.
-2. [ ] Deploy A, promote B, then try a release returning HTTP 503. Confirm B stays active and rollback restores A using the original image ID without rebuilding.
-3. [ ] Link the result and screenshots from the [progress record](docs/PROGRESS.md) and identify the tested environment.
+1. [x] Run acceptance in a clean Docker environment. Record the commit SHA, Docker and Compose versions, and results. Verified on the isolated GitHub Actions Docker host.
+2. [x] Deploy A, promote B, then try a release returning HTTP 503. Confirm B stays active and rollback restores A using the original image ID without rebuilding. Verified in the same CI run.
+3. [ ] Link reviewed screenshots from the [progress record](docs/PROGRESS.md) and identify the tested environment. The machine-generated report is linked above; screenshot provenance and suitability still need review.
+
+**Qualification boundary:** This acceptance covers synthetic fixtures and local HTTP domains on the CI host, not production DNS/TLS, the external GitHub App, real traffic, backup/restore of production keys, or deployment-host security qualification. Those remain separate P1/release gates.
 
 ## Portfolio acceptance checklist
 
